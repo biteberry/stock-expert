@@ -1,0 +1,87 @@
+name: Daily EC2 Execution
+on:
+  schedule:
+    - cron: '0 17 * * 1-6'  # Run Monday-Friday at 5:30 PM IST
+  workflow_dispatch: # Allows manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  start-runner:
+    name: Spin up EC2 Runner
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-ec2.outputs.label }}
+      ec2-instance-id: ${{ steps.start-runner.outputs.ec2-instance-id }}
+    steps:
+    - name: Configure AWS credentials
+      uses: actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-south-1
+
+    - name: Start EC2 Runner
+      uses: machulav/ec2-github-runner@v2
+      id: start-ec2
+      with:
+        mode: "start"
+        github-token: ${{ secrets.GH_PAT }}
+        ec2-instance-type: t3.micro
+        ec2-image-id: ami-0287a05f0ef0e9d9a
+        aws-resource-tags: >
+          [
+            {
+              "key": "Name",
+              "value": "Github-Action-Runner"
+            }
+          ]
+
+  run-python:
+    name: Run Python Script
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Run Python Script
+      run: python medallion_pipeline.py
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: data
+        path:
+          data
+  stop-runner:
+    name: Stop EC2 Runner
+    needs:
+      - start-runner 
+      - run-python
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Stop EC2 Runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: "stop"
+          github-token: ${{ secrets.GH_PAT }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
+
+      
+    
