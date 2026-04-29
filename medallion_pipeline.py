@@ -87,6 +87,23 @@ def process_gold_data(ticker, silver_path):
     df['Volume_SMA_10'] = ta.trend.sma_indicator(df['Volume'], window=10, fillna=False)
     df['Volume_Trend'] = (df['Volume'] > df['Volume_SMA_10']).astype(int) # 1 if volume is above 10-day average
     
+    # ---------------------------------------------------------
+    # NEW: Merge FII/DII Macro Data
+    macro_file = os.path.join(BRONZE_DIR, "macro_fii_dii_activity.csv")
+    if os.path.exists(macro_file):
+        # Load the macro data
+        df_macro = pd.read_csv(macro_file, index_col='Date', parse_dates=True)
+        
+        # Merge using a Left Join (keeps all stock trading days, adds macro data where available)
+        df = df.join(df_macro, how='left')
+        
+        # Forward fill the macro data in case of weekend/holiday mismatches
+        macro_cols = ['FII_Buy', 'FII_Sell', 'FII_Net', 'DII_Buy', 'DII_Sell', 'DII_Net']
+        if all(c in df.columns for c in macro_cols):
+            df[macro_cols] = df[macro_cols].ffill()
+            df[macro_cols] = df[macro_cols].fillna(0) # Fill remaining NaNs at the start
+    # ---------------------------------------------------------
+    
     gold_path = os.path.join(GOLD_DIR, f"{ticker}_features.csv")
     df.to_csv(gold_path)
     print(f"[{ticker}] Saved Gold (AI-Ready) data to {gold_path}")
