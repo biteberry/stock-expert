@@ -50,6 +50,9 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: Install Dependencies
+      run: pip install -r requirements.txt
+
     - name: Run Python Script
       run: python medallion_pipeline.py
 
