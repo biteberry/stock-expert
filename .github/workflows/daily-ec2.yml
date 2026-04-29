@@ -62,10 +62,10 @@ jobs:
   stop-runner:
     name: Stop EC2 Runner
     needs:
-      - start-runner 
+      - start-runner
       - run-python
     runs-on: ubuntu-latest
-    if: ${{ always() }}
+    if: ${{ always() && needs.start-runner.result == 'success' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -80,7 +80,4 @@ jobs:
           mode: "stop"
           github-token: ${{ secrets.GH_PAT }}
           label: ${{ needs.start-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
-
-      
-    
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
