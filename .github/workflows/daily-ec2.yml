@@ -34,10 +34,7 @@ jobs:
         security-group-id: ${{ secrets.AWS_SG_ID }}
         aws-resource-tags: >
           [
-            {
-              "key": "Name",
-              "value": "Github-Action-Runner"
-            }
+            {"Key": "Name", "Value": "Github-Action-Runner"}
           ]
 
   run-python:
