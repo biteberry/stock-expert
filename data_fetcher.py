@@ -11,8 +11,54 @@ import io
 import os
 import json
 from sklearn.linear_model import LinearRegression # புதிய சேர்த்தல்
+import joblib # மாடலை லோட் செய்ய இது தேவை
 
 warnings.filterwarnings('ignore')
+
+def fetch_market_data():
+    print(f"🚀 Project Phoenix V5.0: AI Inference Engine at {datetime.now()}...\n")
+    
+    # 1. மாடலை லோட் செய்தல்
+    try:
+        model = joblib.load('stock_model.pkl')
+        print("✅ AI Model Loaded Successfully!")
+    except:
+        print("⚠️ Model not found! Falling back to Rule-based scoring.")
+        model = None
+
+    nifty_tickers = get_dynamic_nifty_500()
+    data_records = []
+    
+    for ticker in nifty_tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="100d")
+            
+            if len(hist) >= 50:
+                # Technical Indicators கணக்கிடுதல்
+                hist['RSI_14'] = ta.rsi(hist['Close'], length=14)
+                hist['SMA_50'] = ta.sma(hist['Close'], length=50)
+                
+                today = hist.iloc[-1]
+                
+                # AI Prediction Logic
+                ai_score = 0
+                if model:
+                    # மாடல் ட்ரெய்ன் செய்யப்பட்ட அதே Features-ஐக் கொடுக்கிறோம்
+                    features = [[today['Close'], today['RSI_14'], today['SMA_50'], today['Volume']]]
+                    # 5% லாபம் கிடைக்க எவ்வளவு வாய்ப்பு (Probability) உள்ளது?[cite: 1]
+                    ai_score = model.predict_proba(features)[0][1] * 100 
+
+                data_records.append({
+                    "Stock": ticker.replace('.NS', ''),
+                    "LTP": round(today['Close'], 2),
+                    "RSI_14": round(today['RSI_14'], 2),
+                    "AI_Confidence": round(ai_score, 2), # இதுதான் நமது புதிய 'AI Brain Score'
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+        except: continue
+            
+    return pd.DataFrame(data_records)
 
 # NSE-ல் இருந்து Nifty 500 பட்டியலை எடுப்பது
 def get_dynamic_nifty_500():
