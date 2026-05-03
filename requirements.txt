@@ -9,3 +9,4 @@ streamlit
 plotly
 scikit-learn
 numpy
+joblib
