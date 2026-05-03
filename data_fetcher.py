@@ -95,6 +95,12 @@ def fetch_market_data():
                 features = [[close_val, today['RSI_14'], today['SMA_50'], today['Volume']]]
                 ai_score = model.predict_proba(features)[0][1] * 100
 
+            # 7. Regression Prediction (Next Day Prediction Logic)
+            y_reg = hist['Close'].tail(10).values.reshape(-1, 1)
+            x_reg = np.array(range(10)).reshape(-1, 1)
+            reg_model = LinearRegression().fit(x_reg, y_reg)
+            pred_pct = ((reg_model.predict([[10]])[0][0] - close_val) / close_val) * 100
+
             data_records.append({
                 "Stock": ticker.replace('.NS', ''),
                 "Open": open_val,
@@ -107,6 +113,7 @@ def fetch_market_data():
                 "Is_Hammer": is_hammer(open_val, close_val, high_val, low_val),
                 "Is_Breakout": 1 if close_val >= resistance else 0,
                 "Is_Uptrend": 1 if close_val > today['SMA_50'] else 0,
+                "Pred_Next_Day_Pct": round(pred_pct, 2),
                 "AI_Confidence": round(ai_score, 2),
                 "RSI_14": round(today['RSI_14'], 2),
                 "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
