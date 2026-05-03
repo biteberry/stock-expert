@@ -31,24 +31,22 @@ def load_data():
 
 # 3. The AI Probability Engine (Rule-based for now)
 def apply_ai_logic(df):
-    # 1. AI Probability Score Calculation (V4.0)
     df['AI_Probability_Score'] = 10  # Base Score
     
-    # RSI Logic: 40-60 என்பது நல்ல மொமெண்டம் மண்டலம்
-    df.loc[(df['RSI_14'] >= 40) & (df['RSI_14'] <= 65), 'AI_Probability_Score'] += 30
+    # RSI & Trend Logic
+    df.loc[(df['RSI_14'] >= 40) & (df['RSI_14'] <= 65), 'AI_Probability_Score'] += 20
+    df.loc[df['Is_Uptrend'] == 1, 'AI_Probability_Score'] += 20
+    df.loc[df['Volume_Multiplier'] >= 1.5, 'AI_Probability_Score'] += 20
     
-    # Trend Logic: SMA_50-க்கு மேல் இருந்தால் கூடுதல் பலம்
-    df.loc[df['Is_Uptrend'] == 1, 'AI_Probability_Score'] += 30
+    # புதிய Regression Logic: நாளை விலை 1%-க்கு மேல் ஏற வாய்ப்பிருந்தால் கூடுதல் ஸ்கோர்
+    if 'Pred_Next_Day_Pct' in df.columns:
+        df.loc[df['Pred_Next_Day_Pct'] > 1.0, 'AI_Probability_Score'] += 29
     
-    # Volume Logic: 1.5x வால்யூம் இருந்தால் ஆபரேட்டர் என்ட்ரி
-    df.loc[df['Volume_Multiplier'] >= 1.5, 'AI_Probability_Score'] += 29
-    
-    # Cap at 99%
     df['AI_Probability_Score'] = df['AI_Probability_Score'].clip(upper=99)
     
-    # 2. Signal Generation
     def get_signal(row):
-        if row['AI_Probability_Score'] >= 80 and row['Is_Uptrend'] == 1:
+        # 80-க்கு மேல் ஸ்கோர் + நாளை விலை ஏறும் கணிப்பு இருந்தால் High Conviction
+        if row['AI_Probability_Score'] >= 80 and row.get('Pred_Next_Day_Pct', 0) > 0:
             return "🚀 HIGH CONVICTION BUY"
         elif row['AI_Probability_Score'] >= 60:
             return "⏳ WATCHLIST"
@@ -57,6 +55,8 @@ def apply_ai_logic(df):
         
     df['AI_Signal'] = df.apply(get_signal, axis=1)
     return df
+
+
 # --- UI Layout ---
 try:
     with st.spinner("Fetching data from Bronze Layer..."):
@@ -78,7 +78,7 @@ try:
         
         # Display as a beautiful dataframe
         st.dataframe(
-            action_df[['Stock', 'LTP', 'Change_Pct', 'Volume_Multiplier', 'RSI_14', 'SMA_50', 'AI_Probability_Score', 'AI_Signal']],
+            action_df[['Stock', 'LTP', 'Change_Pct', 'Volume_Multiplier', 'RSI_14', 'Pred_Next_Day_Pct', 'AI_Probability_Score', 'AI_Signal']],
             use_container_width=True,
             hide_index=True
         )
