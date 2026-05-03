@@ -1,0 +1,36 @@
+name: Project Phoenix - Daily Auto Run
+
+# எப்பொழுதெல்லாம் இந்த சர்வர் ரன் ஆக வேண்டும்? (The Trigger)
+on:
+  schedule:
+    # நேரம்: UTC பார்மட்டில் 10:15 AM (அதாவது இந்திய நேரப்படி மாலை 3:45 PM)
+    # நாட்கள்: 1-5 (திங்கள் முதல் வெள்ளி வரை - மார்க்கெட் நடக்கும் நாட்கள் மட்டும்)
+    - cron: '15 10 * * 1-6'
+  
+  # நாம் எப்போது வேண்டுமானாலும் மேனுவலாக ரன் செய்து டெஸ்ட் செய்வதற்காக (Manual Trigger)
+  workflow_dispatch:
+
+jobs:
+  run-ai-agent:
+    runs-on: ubuntu-latest # GitHub-ன் இலவச லினக்ஸ் (Linux) சர்வர்
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🚀 Run Project Phoenix Engine
+        env:
+          # நாம் பாதுகாப்பாக வைத்த லாக்கரில் இருந்து சாவியை எடுப்பது
+          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          python data_fetcher.py

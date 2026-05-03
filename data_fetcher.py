@@ -1,75 +1,108 @@
+import os
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
 import warnings
+import gspread
+import json
+from oauth2client.service_account import ServiceAccountCredentials
 
-# தேவையற்ற வார்னிங் மெசேஜ்களை மறைக்க
 warnings.filterwarnings('ignore')
+
+# Google Sheets Configuration (The Database Connection)
+def connect_to_sheets():
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    
+    # GitHub Secret-ல் இருந்து JSON டேட்டாவை நேரடியாக வாங்குவது
+    creds_json = json.loads(os.environ.get('GCP_CREDENTIALS'))
+    
+    # File-க்கு பதிலாக Dict-ஐ பயன்படுத்துகிறோம்
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
+    client = gspread.authorize(creds)
+    
+    sheet_name = 'Phoenix_Market_Data'  
+    sheet = client.open(sheet_name).sheet1
+    return sheet
+
+#def connect_to_sheets():
+#    # உங்கள் credentials.json ஃபைல் இதே ஃபோல்டரில் இருக்க வேண்டும்
+#    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+#    creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+#    client = gspread.authorize(creds)
+#    
+#    # உங்கள் Google Sheet பெயர்
+#    sheet_name = 'Phoenix_Market_Data'  # நீங்கள் உருவாக்கிய ஷீட்டின் பெயரை இங்கே மாற்றவும்
+#    sheet = client.open(sheet_name).sheet1
+#    return sheet
 
 def fetch_nifty_data():
     print(f"🚀 Project Phoenix: Scanning Market at {datetime.now()}...\n")
     
-    # Step 1: Nifty 50 கம்பெனிகளின் குறியீடுகள் (Demo-விற்காக Nifty 50. Nifty 500-க்கும் இதே லாஜிக்தான்)
-    # yfinance-ல் இந்தியப் பங்குகளுக்கு ".NS" என்று முடிய வேண்டும்.
     nifty_tickers = [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
         "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS",
-        "TATASTEEL.NS", "ZOMATO.NS", "SUZLON.NS", "IREDA.NS", "NHPC.NS" # சில Small/Mid caps
+        "TATASTEEL.NS", "ZOMATO.NS", "SUZLON.NS", "IREDA.NS", "NHPC.NS" 
     ]
     
     data_records = []
     
-    # Step 2: ஒவ்வொரு சர்வராக (Stock) பிங் செய்து டேட்டாவை எடுப்பது
     for ticker in nifty_tickers:
         try:
             stock = yf.Ticker(ticker)
-            # கடந்த 2 நாட்களின் டேட்டாவை எடுக்கிறோம் (நேற்றைய விலையை ஒப்பிட)
             hist = stock.history(period="5d")
             
             if len(hist) >= 2:
-                # பிரைஸ் மற்றும் வால்யூம் கால்குலேஷன்
                 today_close = hist['Close'].iloc[-1]
                 yesterday_close = hist['Close'].iloc[-2]
                 
                 today_vol = hist['Volume'].iloc[-1]
                 avg_vol_5days = hist['Volume'].mean()
                 
-                # சதவீதம் எவ்வளவு ஏறியுள்ளது/இறங்கியுள்ளது?
                 pct_change = ((today_close - yesterday_close) / yesterday_close) * 100
                 
                 data_records.append({
                     "Stock": ticker.replace('.NS', ''),
-                    "LTP (₹)": round(today_close, 2),
-                    "Change (%)": round(pct_change, 2),
-                    "Volume Multiplier": round(today_vol / avg_vol_5days, 1)
+                    "LTP": round(today_close, 2),
+                    "Change_Pct": round(pct_change, 2),
+                    "Volume_Multiplier": round(today_vol / avg_vol_5days, 1),
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S") # எப்போது எடுத்தோம் என்று பதிய
                 })
         except Exception as e:
             print(f"⚠️ Error fetching {ticker}: {e}")
             
-    # Step 3: டேட்டாவை Pandas DataFrame-ஆக மாற்றுதல் (Silver Layer Processing)
     df = pd.DataFrame(data_records)
     
-    # --- 🎯 AI FILTERS & LOGIC ---
+    # AI Filters
+    print("🟢 TOP 3 GAINERS:")
+    print(df.sort_values(by="Change_Pct", ascending=False).head(3).to_string(index=False), "\n")
     
-    print("🟢 TOP 3 GAINERS (Momentum Engine):")
-    top_gainers = df.sort_values(by="Change (%)", ascending=False).head(3)
-    print(top_gainers.to_string(index=False), "\n")
+    print("🔴 TOP 3 LOSERS:")
+    print(df.sort_values(by="Change_Pct", ascending=True).head(3).to_string(index=False), "\n")
     
-    print("🔴 TOP 3 LOSERS (Reversal Radar):")
-    top_losers = df.sort_values(by="Change (%)", ascending=True).head(3)
-    print(top_losers.to_string(index=False), "\n")
-    
-    print("💎 HIDDEN GEMS (Price < ₹200 & Volume Breakout > 1.5x):")
-    # Rule: விலை 200க்குக் கீழ் இருக்க வேண்டும், ட்ரேடிங் வால்யூம் வழக்கத்தை விட 1.5 மடங்கு அதிகம் இருக்க வேண்டும்
-    hidden_gems = df[(df["LTP (₹)"] < 200) & (df["Volume Multiplier"] > 1.5)]
-    if not hidden_gems.empty:
-        print(hidden_gems.to_string(index=False), "\n")
-    else:
-        print("No hidden gems found today.\n")
-
     return df
 
-# கோடை ரன் செய்ய
+def push_to_google_sheets(df):
+    try:
+        sheet = connect_to_sheets()
+        
+        # DataFrame-ஐ List of Lists ஆக மாற்றுதல் (Google Sheet-க்கு புரியும் பார்மட்)
+        # முதலில் Column பெயர்களைச் சேர்ப்போம்
+        data_to_push = [df.columns.values.tolist()] + df.values.tolist()
+        
+        # ஷீட்டில் பழைய டேட்டா இருந்தால் அதை அழித்துவிட்டுப் புதிய டேட்டாவைப் போடலாம் 
+        # (அல்லது append_row மூலம் தொடர்ந்து சேர்க்கலாம். இப்போதைக்கு க்ளியர் செய்வோம்)
+        sheet.clear()
+        
+        # டேட்டாவை மொத்தமாக அப்டேட் செய்தல்
+        sheet.update('A1', data_to_push)
+        print("✅ Data successfully pushed to Google Sheets (Bronze Layer)!")
+        
+    except Exception as e:
+         print(f"❌ Database Error: {e}")
+
 if __name__ == "__main__":
+    # 1. டேட்டாவை எடு
     final_data = fetch_nifty_data()
-    print("✅ System Execution Completed Successfully!")
+    # 2. டேட்டாபேஸில் தள்ளு
+    push_to_google_sheets(final_data)
+    print("\n✅ System Execution Completed Successfully!")
