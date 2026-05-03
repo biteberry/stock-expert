@@ -45,81 +45,67 @@ def connect_to_sheets():
     return client.open('Phoenix_Market_Data').sheet1
 
 def fetch_market_data():
-    print(f"🚀 Project Phoenix V6.1: Risk-Management Engine Starting...")
+    print(f"🚀 Project Phoenix V6.1.1: Debug Mode Starting...")
+    
     try:
         model = joblib.load('stock_model.pkl')
         print("✅ AI Brain Loaded!")
-    except:
-        print("⚠️ AI Brain not found!")
+    except Exception as e:
+        print(f"⚠️ Model Load Error: {e}")
         model = None
 
     nifty_tickers = get_dynamic_nifty_500()
+    # டெஸ்டிங்கிற்காக முதல் 10 ஸ்டாக்குகளை மட்டும் முதலில் பார்ப்போம்
+    test_tickers = nifty_tickers[:10] 
     data_records = []
     
-    for ticker in nifty_tickers:
+    for ticker in test_tickers:
         try:
+            print(f"🔍 Checking {ticker}...")
             stock = yf.Ticker(ticker)
             hist = stock.history(period="100d")
-            if len(hist) < 50: continue
+            
+            if hist.empty or len(hist) < 50:
+                print(f"❌ {ticker}: Not enough data (Length: {len(hist)})")
+                continue
+
+            # Indicators கணக்கிடும்போது எர்ரர் வருகிறதா என்று பார்க்க
+            hist['RSI_14'] = ta.rsi(hist['Close'], length=14)
+            hist['SMA_50'] = ta.sma(hist['Close'], length=50)
+            
+            if hist['RSI_14'].isnull().all():
+                print(f"❌ {ticker}: RSI Calculation failed")
+                continue
 
             today = hist.iloc[-1]
             yesterday = hist.iloc[-2]
             
-            # 1. OHLC & Basic Stats
-            open_val = round(today['Open'], 2)
-            high_val = round(today['High'], 2)
-            low_val = round(today['Low'], 2)
+            # OHLC & Logic (முந்தைய கோடில் உள்ளது போல...)
             close_val = round(today['Close'], 2)
-            pct_change = ((close_val - yesterday['Close']) / yesterday['Close']) * 100
-            vol_multiplier = today['Volume'] / hist['Volume'].tail(10).mean()
-
-            # 2. Support & Resistance (Pivot Logic)
             recent_hist = hist.tail(20)
-            resistance = round(recent_hist['High'].max(), 2)
             support_val = round(recent_hist['Low'].min(), 2)
-
-            # 3. Risk-Reward 1:2 Prediction Logic
-            # Risk = இன்றைய விலை - சப்போர்ட் (Stop Loss)
+            
+            # Risk-Reward 
             risk_amt = close_val - support_val
-            
-            if risk_amt > 0:
-                stop_loss = support_val
-                # Target = இன்றைய விலை + (2 * ரிஸ்க்)
-                target_1_2 = round(close_val + (2 * risk_amt), 2)
-            else:
-                # விலை சப்போர்ட்டிற்கு கீழே இருந்தால் 2% SL மற்றும் 4% Target
-                stop_loss = round(close_val * 0.98, 2)
-                target_1_2 = round(close_val * 1.04, 2)
-            
-            potential_profit = round(((target_1_2 - close_val) / close_val) * 100, 2)
-
-            # 4. Indicators & AI
-            hist['RSI_14'] = ta.rsi(hist['Close'], length=14)
-            hist['SMA_50'] = ta.sma(hist['Close'], length=50)
-            is_uptrend = 1 if close_val > today['SMA_50'] else 0
-            
-            ai_score = 0
-            if model:
-                features = [[close_val, today['RSI_14'], today['SMA_50'], today['Volume']]]
-                ai_score = model.predict_proba(features)[0][1] * 100
+            stop_loss = support_val if risk_amt > 0 else round(close_val * 0.98, 2)
+            target_1_2 = round(close_val + (2 * risk_amt), 2) if risk_amt > 0 else round(close_val * 1.04, 2)
 
             data_records.append({
                 "Stock": ticker.replace('.NS', ''),
-                "Open": open_val,
-                "High": high_val,
-                "Low": low_val,
                 "LTP": close_val,
                 "Support_SL": stop_loss,
                 "Target_1_2": target_1_2,
-                "Profit_Pct": potential_profit,
-                "Is_Hammer": is_hammer(open_val, close_val, high_val, low_val),
-                "Is_Breakout": 1 if close_val >= resistance else 0,
-                "AI_Confidence": round(ai_score, 2),
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "AI_Confidence": 0 # தற்காலிகமாக 0 வைப்போம்
             })
-        except: continue
+            print(f"✅ {ticker}: Added successfully")
+
+        except Exception as e:
+            print(f"💥 {ticker} Error: {str(e)}")
+            continue
             
+    print(f"\n📊 Total Records Captured: {len(data_records)}")
     return pd.DataFrame(data_records)
+
 
 def push_to_google_sheets(df):
     try:
