@@ -7,3 +7,5 @@ oauth2client
 requests
 streamlit
 plotly
+scikit-learn
+numpy
