@@ -31,34 +31,32 @@ def load_data():
 
 # 3. The AI Probability Engine (Rule-based for now)
 def apply_ai_logic(df):
-    df['AI_Probability_Score'] = 0
+    # 1. AI Probability Score Calculation (V4.0)
+    df['AI_Probability_Score'] = 10  # Base Score
     
-    # Logic 1: Volume Breakout (ஆபரேட்டர்கள் உள்ளே வருகிறார்களா?)
-    df.loc[df['Volume_Multiplier'] >= 1.5, 'AI_Probability_Score'] += 40
-    df.loc[(df['Volume_Multiplier'] >= 1.2) & (df['Volume_Multiplier'] < 1.5), 'AI_Probability_Score'] += 20
+    # RSI Logic: 40-60 என்பது நல்ல மொமெண்டம் மண்டலம்
+    df.loc[(df['RSI_14'] >= 40) & (df['RSI_14'] <= 65), 'AI_Probability_Score'] += 30
     
-    # Logic 2: Momentum (வேகம் இருக்கிறதா?)
-    df.loc[df['Change_Pct'] >= 2.0, 'AI_Probability_Score'] += 30
-    df.loc[(df['Change_Pct'] > 0) & (df['Change_Pct'] < 2.0), 'AI_Probability_Score'] += 15
+    # Trend Logic: SMA_50-க்கு மேல் இருந்தால் கூடுதல் பலம்
+    df.loc[df['Is_Uptrend'] == 1, 'AI_Probability_Score'] += 30
     
-    # Logic 3: Oversold Bounce (நன்றாக இறங்கி ரிவர்சல் ஆகிறதா?)
-    df.loc[(df['Change_Pct'] <= -2.0) & (df['Volume_Multiplier'] >= 1.5), 'AI_Probability_Score'] += 45
-    
-    # Base Probability
-    df['AI_Probability_Score'] += 10 # Market minimum baseline
+    # Volume Logic: 1.5x வால்யூம் இருந்தால் ஆபரேட்டர் என்ட்ரி
+    df.loc[df['Volume_Multiplier'] >= 1.5, 'AI_Probability_Score'] += 29
     
     # Cap at 99%
-    df.loc[df['AI_Probability_Score'] > 99, 'AI_Probability_Score'] = 99
+    df['AI_Probability_Score'] = df['AI_Probability_Score'].clip(upper=99)
     
-    # Generate Signals based on Score
-    def get_signal(score):
-        if score >= 80: return "🚀 STRONG BUY"
-        elif score >= 60: return "⏳ HOLD / WATCH"
-        else: return "🚫 REJECT"
+    # 2. Signal Generation
+    def get_signal(row):
+        if row['AI_Probability_Score'] >= 80 and row['Is_Uptrend'] == 1:
+            return "🚀 HIGH CONVICTION BUY"
+        elif row['AI_Probability_Score'] >= 60:
+            return "⏳ WATCHLIST"
+        else:
+            return "🚫 AVOID"
         
-    df['AI_Signal'] = df['AI_Probability_Score'].apply(get_signal)
+    df['AI_Signal'] = df.apply(get_signal, axis=1)
     return df
-
 # --- UI Layout ---
 try:
     with st.spinner("Fetching data from Bronze Layer..."):
