@@ -45,7 +45,7 @@ def connect_to_sheets():
     return client.open('Phoenix_Market_Data').sheet1
 
 def fetch_market_data():
-    print(f"🚀 Project Phoenix V6.1.1: Debug Mode Starting...")
+    print(f"🚀 Project Phoenix V6.2: Full Production Scan Starting...")
     
     try:
         model = joblib.load('stock_model.pkl')
@@ -55,79 +55,81 @@ def fetch_market_data():
         model = None
 
     nifty_tickers = get_dynamic_nifty_500()
-    # டெஸ்டிங்கிற்காக முதல் 10 ஸ்டாக்குகளை மட்டும் முதலில் பார்ப்போம்
-    test_tickers = nifty_tickers[:10] 
     data_records = []
     
-    for ticker in test_tickers:
+    # 500 ஸ்டாக்குகளையும் ஸ்கேன் செய்கிறோம்
+    for ticker in nifty_tickers:
         try:
-            print(f"🔍 Checking {ticker}...")
             stock = yf.Ticker(ticker)
             hist = stock.history(period="100d")
             
             if hist.empty or len(hist) < 50:
-                print(f"❌ {ticker}: Not enough data (Length: {len(hist)})")
                 continue
 
-            # Indicators கணக்கிடும்போது எர்ரர் வருகிறதா என்று பார்க்க
+            # Indicators கணக்கிடுதல்
             hist['RSI_14'] = ta.rsi(hist['Close'], length=14)
             hist['SMA_50'] = ta.sma(hist['Close'], length=50)
             
-            if hist['RSI_14'].isnull().all():
-                print(f"❌ {ticker}: RSI Calculation failed")
-                continue
-
             today = hist.iloc[-1]
             yesterday = hist.iloc[-2]
             
-            # OHLC & Logic (முந்தைய கோடில் உள்ளது போல...)
+            # 1. OHLC Data[cite: 6]
+            open_val = round(today['Open'], 2)
+            high_val = round(today['High'], 2)
+            low_val = round(today['Low'], 2)
             close_val = round(today['Close'], 2)
+            
+            # 2. Risk-Reward Logic (1:2)[cite: 6]
             recent_hist = hist.tail(20)
+            resistance = round(recent_hist['High'].max(), 2)
             support_val = round(recent_hist['Low'].min(), 2)
             
-            # Risk-Reward 
             risk_amt = close_val - support_val
             stop_loss = support_val if risk_amt > 0 else round(close_val * 0.98, 2)
             target_1_2 = round(close_val + (2 * risk_amt), 2) if risk_amt > 0 else round(close_val * 1.04, 2)
+            profit_pct = round(((target_1_2 - close_val) / close_val) * 100, 2)
+
+            # 3. AI Prediction[cite: 6]
+            ai_score = 0
+            if model and not pd.isna(today['RSI_14']):
+                features = [[close_val, today['RSI_14'], today['SMA_50'], today['Volume']]]
+                ai_score = model.predict_proba(features)[0][1] * 100
 
             data_records.append({
                 "Stock": ticker.replace('.NS', ''),
+                "Open": open_val,
+                "High": high_val,
+                "Low": low_val,
                 "LTP": close_val,
                 "Support_SL": stop_loss,
                 "Target_1_2": target_1_2,
-                "AI_Confidence": 0 # தற்காலிகமாக 0 வைப்போம்
+                "Profit_Pct": profit_pct,
+                "Is_Hammer": is_hammer(open_val, close_val, high_val, low_val),
+                "Is_Breakout": 1 if close_val >= resistance else 0,
+                "Is_Uptrend": 1 if close_val > today['SMA_50'] else 0,
+                "AI_Confidence": round(ai_score, 2),
+                "RSI_14": round(today['RSI_14'], 2),
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
-            print(f"✅ {ticker}: Added successfully")
 
-        except Exception as e:
-            print(f"💥 {ticker} Error: {str(e)}")
+        except Exception:
             continue
             
-    print(f"\n📊 Total Records Captured: {len(data_records)}")
+    print(f"📊 Total Records Captured: {len(data_records)}")
     return pd.DataFrame(data_records)
-
 
 def push_to_google_sheets(df):
     try:
         sheet = connect_to_sheets()
-        
-        # 1. பழைய டேட்டாவை முழுமையாக நீக்குதல்
         sheet.clear()
-        
-        # 2. NaN மதிப்புகளை காலியான ஸ்ட்ரிங்காக மாற்றுதல் (இல்லையெனில் எர்ரர் வரும்)
         df = df.fillna('')
-        
-        # 3. ஹெடர் மற்றும் டேட்டாவை தயார் செய்தல்
         data_to_push = [df.columns.values.tolist()] + df.values.tolist()
-        
-        # 4. புதிய முறையைப் பயன்படுத்தி அப்டேட் செய்தல்
-        # .update() என்பதற்கு பதில் .update_cells() அல்லது ஸ்ட்ரிங் ரேஞ்ச் பயன்படுத்துதல்
-        sheet.update(f'A1', data_to_push)
-        
+        sheet.update('A1', data_to_push)
         print(f"✅ Success: {len(df)} rows pushed to Google Sheets!")
     except Exception as e:
         print(f"❌ Critical Error in Sheet Update: {e}")
 
 if __name__ == "__main__":
     final_data = fetch_market_data()
-    push_to_google_sheets(final_data)
+    if not final_data.empty:
+        push_to_google_sheets(final_data)
