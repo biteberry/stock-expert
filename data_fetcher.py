@@ -124,11 +124,23 @@ def fetch_market_data():
 def push_to_google_sheets(df):
     try:
         sheet = connect_to_sheets()
+        
+        # 1. பழைய டேட்டாவை முழுமையாக நீக்குதல்
         sheet.clear()
-        sheet.update('A1', [df.columns.values.tolist()] + df.values.tolist())
-        print("✅ Risk-Management Data Pushed!")
+        
+        # 2. NaN மதிப்புகளை காலியான ஸ்ட்ரிங்காக மாற்றுதல் (இல்லையெனில் எர்ரர் வரும்)
+        df = df.fillna('')
+        
+        # 3. ஹெடர் மற்றும் டேட்டாவை தயார் செய்தல்
+        data_to_push = [df.columns.values.tolist()] + df.values.tolist()
+        
+        # 4. புதிய முறையைப் பயன்படுத்தி அப்டேட் செய்தல்
+        # .update() என்பதற்கு பதில் .update_cells() அல்லது ஸ்ட்ரிங் ரேஞ்ச் பயன்படுத்துதல்
+        sheet.update(f'A1', data_to_push)
+        
+        print(f"✅ Success: {len(df)} rows pushed to Google Sheets!")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Critical Error in Sheet Update: {e}")
 
 if __name__ == "__main__":
     final_data = fetch_market_data()
