@@ -78,7 +78,7 @@ try:
         
         # Display as a beautiful dataframe
         st.dataframe(
-            action_df[['Stock', 'LTP', 'Change_Pct', 'Volume_Multiplier', 'AI_Probability_Score', 'AI_Signal']],
+            action_df[['Stock', 'LTP', 'Change_Pct', 'Volume_Multiplier', 'RSI_14', 'SMA_50', 'AI_Probability_Score', 'AI_Signal']],
             use_container_width=True,
             hide_index=True
         )
