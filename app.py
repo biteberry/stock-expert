@@ -31,32 +31,22 @@ def load_data():
 
 # 3. The AI Probability Engine (Rule-based for now)
 def apply_ai_logic(df):
-    df['AI_Probability_Score'] = 10  # Base Score
-    
-    # RSI & Trend Logic
-    df.loc[(df['RSI_14'] >= 40) & (df['RSI_14'] <= 65), 'AI_Probability_Score'] += 20
-    df.loc[df['Is_Uptrend'] == 1, 'AI_Probability_Score'] += 20
-    df.loc[df['Volume_Multiplier'] >= 1.5, 'AI_Probability_Score'] += 20
-    
-    # புதிய Regression Logic: நாளை விலை 1%-க்கு மேல் ஏற வாய்ப்பிருந்தால் கூடுதல் ஸ்கோர்
-    if 'Pred_Next_Day_Pct' in df.columns:
-        df.loc[df['Pred_Next_Day_Pct'] > 1.0, 'AI_Probability_Score'] += 29
-    
-    df['AI_Probability_Score'] = df['AI_Probability_Score'].clip(upper=99)
-    
+    # 1. AI Confidence-ஐ அடிப்படையாகக் கொண்டு சிக்னல் உருவாக்குதல்
     def get_signal(row):
-        # 80-க்கு மேல் ஸ்கோர் + நாளை விலை ஏறும் கணிப்பு இருந்தால் High Conviction
-        if row['AI_Probability_Score'] >= 80 and row.get('Pred_Next_Day_Pct', 0) > 0:
+        # ஏஐ 80% மேல் உறுதி அளித்து, ட்ரெண்டும் அப்-ஆக (Uptrend) இருந்தால் அது தங்கம்!
+        if row.get('AI_Confidence', 0) >= 80 and row.get('Is_Uptrend', 0) == 1:
             return "🚀 HIGH CONVICTION BUY"
-        elif row['AI_Probability_Score'] >= 60:
+        elif row.get('AI_Confidence', 0) >= 60:
             return "⏳ WATCHLIST"
         else:
             return "🚫 AVOID"
-        
+            
     df['AI_Signal'] = df.apply(get_signal, axis=1)
+    
+    # 2. ப்ரோபபிலிட்டி ஸ்கோரை அப்படியே AI_Confidence-ஆக மாற்றிக்கொள்ளலாம்
+    df['AI_Probability_Score'] = df['AI_Confidence']
+    
     return df
-
-
 # --- UI Layout ---
 try:
     with st.spinner("Fetching data from Bronze Layer..."):
@@ -78,7 +68,7 @@ try:
         
         # Display as a beautiful dataframe
         st.dataframe(
-            action_df[['Stock', 'LTP', 'Change_Pct', 'Volume_Multiplier', 'RSI_14', 'Pred_Next_Day_Pct', 'AI_Probability_Score', 'AI_Signal']],
+            action_df[['Stock', 'LTP', 'RSI_14', 'Pred_Next_Day_Pct', 'AI_Confidence', 'AI_Signal']],
             use_container_width=True,
             hide_index=True
         )
