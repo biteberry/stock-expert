@@ -12,8 +12,8 @@ st.title("🦅 Project Phoenix - AI Swing Trading Radar")
 st.markdown("Autonomous Market Screener & Risk-Management Engine | **System Architect:** Manivannan")
 st.markdown("---")
 
-# 2. Database Connection with Clear Cache Logic
-@st.cache_data(ttl=60) # டெஸ்டிங்கிற்காக 1 நிமிடம் வைப்போம்
+# 2. Database Connection
+@st.cache_data(ttl=60)
 def load_data():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     try:
@@ -27,11 +27,10 @@ def load_data():
     data = sheet.get_all_records()
     return pd.DataFrame(data)
 
-# 3. Enhanced AI Decision Logic (V6.2)
+# 3. AI Decision Logic
 def apply_ai_logic(df):
     def get_signal(row):
         score = row.get('AI_Confidence', 0)
-        # 0.0 என்பது சிக்னல் இல்லை என்று அர்த்தம்
         if score == 0: return "🚫 NO SIGNAL"
         
         is_breakout = row.get('Is_Breakout', 0)
@@ -54,44 +53,41 @@ try:
         
     if not raw_df.empty:
         df = apply_ai_logic(raw_df)
-        
-        # காலம்ஸ்களை பாதுகாப்பாகக் கையாளுதல்
         available_cols = df.columns.tolist()
-        preferred_order = [
-            'Stock', 'LTP', 'Open', 'High', 'Low', 'Is_Hammer', 
-            'Support_SL', 'Target_1_2', 'Profit_Pct', 
-            'Is_Breakout', 'AI_Confidence', 'AI_Signal'
-        ]
-        # ஷீட்டில் இருக்கும் காலம்ஸ்களை மட்டும் தேர்ந்தெடுக்கும் லாஜிக்
-        final_cols = [c for c in preferred_order if c in available_cols]
-        
-        # Top Level Metrics
+
+        # Top Level Metrics (Added Gainer & Loser with names and %)
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Scanned", len(df))
-        col2.metric("High Conviction", len(df[df['AI_Signal'].str.contains("HIGH CONVICTION", na=False)]))
+        col1.metric("Total Stocks", len(df))
+        col2.metric("Conviction Signals", len(df[df['AI_Signal'].str.contains("HIGH CONVICTION", na=False)]))
         
         if 'Change_Pct' in available_cols:
             top_gainer = df.loc[df['Change_Pct'].idxmax()]
-            col3.metric("Top Gainer", top_gainer['Stock'], f"{top_gainer['Change_Pct']}%")
+            top_loser = df.loc[df['Change_Pct'].idxmin()]
+            col3.metric("🟢 Top Gainer", f"{top_gainer['Stock']}", f"{top_gainer['Change_Pct']}%")
+            col4.metric("🔴 Top Loser", f"{top_loser['Stock']}", f"{top_loser['Change_Pct']}%")
         
-        if 'AI_Confidence' in available_cols:
-            col4.metric("Avg AI Confidence", f"{round(df['AI_Confidence'].mean(), 1)}%")
-
         st.markdown("### 🎯 AI Actionable Intelligence (Risk-Reward 1:2)")
+
+        # Adding Pred_Next_Day_Pct to the table
+        preferred_order = [
+            'Stock', 'LTP', 'Change_Pct', 'Pred_Next_Day_Pct', 'AI_Confidence', 
+            'Support_SL', 'Target_1_2', 'Profit_Pct', 'Is_Hammer', 'Is_Breakout', 'AI_Signal'
+        ]
+        final_cols = [c for c in preferred_order if c in available_cols]
         
-        # பில்டர் மற்றும் சார்டிங்
         action_df = df.sort_values(by="AI_Confidence", ascending=False)
         
-        # டைனமிக் டேபிளைக் காட்டுதல்
         st.dataframe(
             action_df[final_cols],
             use_container_width=True,
             hide_index=True,
             column_config={
+                "Pred_Next_Day_Pct": st.column_config.NumberColumn("Next Day Pred. %", format="%.2f%%"),
+                "Change_Pct": st.column_config.NumberColumn("Today Change", format="%.2f%%"),
                 "Support_SL": st.column_config.NumberColumn("Stop Loss", format="₹%.2f"),
                 "Target_1_2": st.column_config.NumberColumn("Target (1:2)", format="₹%.2f"),
                 "Profit_Pct": st.column_config.NumberColumn("Profit %", format="%.2f%%"),
-                "AI_Confidence": st.column_config.ProgressColumn("AI Confidence", min_value=0, max_value=100, format="%.1f%%")
+                "AI_Confidence": st.column_config.ProgressColumn("Confidence", min_value=0, max_value=100, format="%.1f%%")
             }
         )
         
