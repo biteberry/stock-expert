@@ -4,3 +4,5 @@ ta
 gspread
 oauth2client
 requests
+streamlit
+plotly
